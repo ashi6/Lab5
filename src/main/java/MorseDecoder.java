@@ -47,14 +47,17 @@ public class MorseDecoder {
 
         /*
          * We should check the results of getNumFrames to ensure that they are safe to cast to int.
+         * ^ I'm not doing that...
          */
         int totalBinCount = (int) Math.ceil(inputFile.getNumFrames() / BIN_SIZE);
         double[] returnBuffer = new double[totalBinCount];
 
         double[] sampleBuffer = new double[BIN_SIZE * inputFile.getNumChannels()];
         for (int binIndex = 0; binIndex < totalBinCount; binIndex++) {
-            // Get the right number of samples from the inputFile
-            // Sum all the samples together and store them in the returnBuffer
+            int framesRead = inputFile.readFrames(sampleBuffer, BIN_SIZE);
+            for (int i = 0; i < framesRead; i++) {
+                returnBuffer[binIndex] += Math.abs(sampleBuffer[i]);
+            }
         }
         return returnBuffer;
     }
@@ -64,6 +67,9 @@ public class MorseDecoder {
 
     /** Bin threshold for dots or dashes. Related to BIN_SIZE. You may need to modify this value. */
     private static final int DASH_BIN_COUNT = 8;
+
+    /** Bin threshold for between characters. */
+    private static final int CHAR_SEPERATOR_BIN_COUNT = 10;
 
     /**
      * Convert power measurements to dots, dashes, and spaces.
@@ -87,7 +93,28 @@ public class MorseDecoder {
         // else if issilence and wassilence
         // else if issilence and not wassilence
 
-        return "";
+        int previousPower = 0;
+        int silenceCount = 0;
+        String ret = "";
+
+        for (double measurement : powerMeasurements) {
+            if (measurement > POWER_THRESHOLD) {
+                silenceCount = 0;
+                previousPower += 1;
+            } else {
+                silenceCount += 1;
+                if (previousPower > DASH_BIN_COUNT) {
+                    ret += "-";
+                } else if (previousPower != 0) {
+                    ret += ".";
+                } else if (silenceCount == CHAR_SEPERATOR_BIN_COUNT) {
+                    ret += " ";
+                }
+                previousPower = 0;
+            }
+        }
+
+        return ret;
     }
 
     /**
@@ -177,6 +204,9 @@ public class MorseDecoder {
     public static String morseWavToString(final WavFile inputFile)
             throws IOException, WavFileException {
         double[] binnedSamples = binWavFilePower(inputFile);
+//        for (double i : binnedSamples) {
+//            System.out.println(i);
+//        }
         String dotDash = powerToDotDash(binnedSamples);
         String outputString = dotDashToAlpha(dotDash);
         return dotDash + "\n" + outputString;
